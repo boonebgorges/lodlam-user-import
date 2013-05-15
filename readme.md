@@ -10,4 +10,4 @@ This plugin is *not* usable out of the box. You will have to map it to the corre
 
 Note that the plugin expects a users.csv file in the plugin directory as a source. You'll have to put it there manually.
 
-Originally created for lodlam.net. Thanks to them for supporting its development.
+Originally created for lodlam.net. Thanks to them for supporting its development and release under the GPLv3.
