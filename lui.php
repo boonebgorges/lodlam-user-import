@@ -477,16 +477,15 @@ Password: %4$s
 		) );
 
 		$this->map_to_bp_field( 'display_name', $user_id, $data );
+
+		$public = $this->get_col( 'is_public', $data );
+		if ( 'no' === strtolower( $public ) ) {
+			return;
+		}
+
 		$this->map_to_bp_field( 'user_url', $user_id, $data );
 
 		// (2) BP fields
-		//   - 4 => 'Twitter handle',
-		//   - 5 => 'Affiliation',
-		//   - 6 => 'Short Bio',
-		//   - 7 => 'Interest in LODLAM',
-		//   - 12 => 'Country',
-		//   - 13 => 'Sector',
-
 		$twitter_col = $this->get_col( 'twitter' );
 		$data[ $twitter_col ] = $this->sanitize_twitter_handle( $data[ $twitter_col ] );
 		foreach ( $data as $dkey => $d ) {
