@@ -14,8 +14,14 @@ class LODLAM_User_Import {
 			$this->process_upload();
 		}
 
-		if ( ! empty( $_POST['lodlam_process'] ) ) {
-//			$this->start();
+		if ( ! empty( $_POST['lodlam_process'] ) && ! empty( $_POST['run'] ) ) {
+			$file = get_option( 'lui_last_csv' );
+			if ( $file ) {
+				$this->start( $file );
+				wp_redirect( admin_url( 'admin.php?page=lodlam_user_import&success=1' ) );
+				delete_option( 'lui_results' );
+				die();
+			}
 		}
 
 		add_menu_page(
@@ -29,6 +35,13 @@ class LODLAM_User_Import {
 
 	public function admin_menu_markup() {
 		$results = get_option( 'lui_results' );
+		if ( $results ) {
+			$results = json_decode( $results );
+			$this->cols = $results->cols;
+			foreach ( $this->cols as &$col ) {
+				$col = (array) $col;
+			}
+		}
 		delete_option( 'lui_results' );
 
 		?>
@@ -36,6 +49,10 @@ class LODLAM_User_Import {
 			<h2>LODLAM User Import</h2>
 
 			<form action="<?php echo $this->page_url ?>" method="post" enctype="multipart/form-data">
+				<?php if ( ! empty( $_GET['success'] ) ) : ?>
+					<p><strong>Users successfully imported!</strong></p>
+				<?php endif; ?>
+
 				<?php if ( ! $results ) : ?>
 					<label for="lui_upload"><?php _e( 'Select the user data file for upload.', 'lodlam-user-import' ) ?></label><br />
 					<input id="lui_upload" name="lui_upload" type="file" />
@@ -43,19 +60,22 @@ class LODLAM_User_Import {
 					<?php wp_nonce_field( 'lui_upload', '_lui_upload_nonce' ); ?>
 
 					<p>The CSV file will be read and parsed, and you'll be given information about which accounts will be created, which have already been found in the system, and which records in the CSV are malformed. Then, click the Import button again to run the import.</p>
+
+					<input type="submit" name="submit" value="Upload" />
 				<?php else : ?>
 					<h3>Results</h3>
 					<ol>
 					<?php foreach ( $results as $rkey => $r ) : ?>
-						<?php if ( ! is_int( $rkey ) ) continue; ?>
+						<?php if ( ! is_numeric( $rkey ) ) continue; ?>
+						<?php $r = (array) $r; ?>
 
 						<li>
 
 						<?php if ( $r['status'] === 'success' ) : ?>
 							<?php if ( $r['user_exists'] ) : ?>
-								<?php echo esc_html( $r['data'][1] ) ?> was matched to existing user <?php echo esc_html( $r['user_exists'] ) ?>. Profile data will be imported to this user.
+								<?php echo esc_html( $this->get_col( 'display_name', $r['data'] ) ) ?> was matched to existing user <?php echo esc_html( $r['user_exists'] ) ?>. Profile data will be imported to this user.
 							<?php else : ?>
-								No user was found for <?php echo esc_html( $r['data'][1] ) ?> (<?php echo esc_html( $r['data'][2] ) ?>). A new account will be created, and profile data will be imported.
+								No user was found for <?php echo esc_html( $this->get_col( 'display_name', $r['data'] ) ) ?> (<?php echo esc_html( $this->get_col( 'user_email', $r['data'] ) ) ?>). A new account will be created, and profile data will be imported.
 							<?php endif; ?>
 						<?php else: ?>
 							The following data could not be parsed. The user will have to be created manually.
@@ -66,9 +86,9 @@ class LODLAM_User_Import {
 					</ol>
 
 					<input type="hidden" name="run" value="1" />
+					<input type="submit" name="submit" value="Import" />
 				<?php endif ?>
 
-				<input type="submit" name="submit" value="Import" />
 				<input type="hidden" name="lodlam_process" value="1" />
 			</form>
 		</div>
@@ -108,6 +128,12 @@ class LODLAM_User_Import {
 		}
 
 		$this->start( $upload['file'] );
+
+		$upload_dir = wp_upload_dir();
+		rename( $upload['file'], $upload_dir['path'] . '/lodlam-user-import.csv' );
+		update_option( 'lui_last_csv', $upload_dir['path'] . '/lodlam-user-import.csv' );
+
+		wp_redirect( admin_url( 'admin.php?page=lodlam_user_import' ) );
 	}
 
 	public static function allow_csv_upload( $types ) {
@@ -122,8 +148,7 @@ class LODLAM_User_Import {
 
 		$handle = fopen( $file, 'r' );
 
-//		$dry_run = empty( $_POST['run'] );
-		$dry_run = false;
+		$dry_run = empty( $_POST['run'] );
 
 		$row = 0;
 		$results = array( 'is_dry_run' => $dry_run );
@@ -180,7 +205,28 @@ class LODLAM_User_Import {
 			$results[] = $result;
 		}
 
-		update_option( 'lui_results', $results );
+		$results['cols'] = $this->cols;
+
+		// Whee!
+		foreach ( $results as $rkey => &$result ) {
+			if ( ! is_int( $rkey ) ) {
+				continue;
+			}
+
+			if ( ! is_array( $result['data'] ) ) {
+				continue;
+			}
+
+			foreach ( $result['data'] as &$r ) {
+				if ( ! is_string( $r ) ) {
+					return;
+				}
+
+				$r = utf8_encode( $r );
+			}
+		}
+
+		update_option( 'lui_results', json_encode( $results ) );
 	}
 
 	/**
@@ -484,7 +530,6 @@ Password: %4$s
 
 		// Overwrite existing data
 		if ( isset( $data_array[ $col_num ] ) ) {
-			var_Dump( $data_array[ $col_num ] );
 			$value = $data_array[ $col_num ];
 		} else {
 			$value = '';
