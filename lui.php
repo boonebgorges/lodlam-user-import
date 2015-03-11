@@ -353,7 +353,7 @@ class LODLAM_User_Import {
 					$this->cols[ $ckey ] = array(
 						'slug' => 'lodlam_challege',
 						'name' => 'Are you interested in participating in a LODLAM challenge?',
-						'location' => 'xprofile',
+						'location' => '',
 					);
 					break;
 
@@ -361,7 +361,7 @@ class LODLAM_User_Import {
 					$this->cols[ $ckey ] = array(
 						'slug' => 'work_to_submit',
 						'name' => 'What work you\'re doing would you like to submit to a LODLAM Challenge if we ran one for the 2015 Summit?',
-						'location' => 'xprofile',
+						'location' => '',
 					);
 					break;
 
@@ -369,7 +369,7 @@ class LODLAM_User_Import {
 					$this->cols[ $ckey ] = array(
 						'slug' => 'acceptance_and_payment',
 						'name' => 'Acceptance and Payment',
-						'location' => 'xprofile',
+						'location' => '',
 					);
 					break;
 
@@ -377,7 +377,7 @@ class LODLAM_User_Import {
 					$this->cols[ $ckey ] = array(
 						'slug' => 'additional_notes',
 						'name' => 'Additional Notes',
-						'location' => 'xprofile',
+						'location' => '',
 					);
 					break;
 
@@ -385,7 +385,7 @@ class LODLAM_User_Import {
 					$this->cols[ $ckey ] = array(
 						'slug' => 'dh2015_did_you_know',
 						'name' => 'Did you know that the 2015 Digital Humanities conference is on around the same time and in the same place as the 2015 LODLAM Summit?',
-						'location' => 'xprofile',
+						'location' => '',
 					);
 					break;
 
@@ -393,7 +393,7 @@ class LODLAM_User_Import {
 					$this->cols[ $ckey ] = array(
 						'slug' => 'dh2015_paper_submit',
 						'name' => 'Will you be submitting a paper for the 2015 Digital Humanities conference?',
-						'location' => 'xprofile',
+						'location' => '',
 					);
 					break;
 
@@ -401,7 +401,7 @@ class LODLAM_User_Import {
 					$this->cols[ $ckey ] = array(
 						'slug' => 'dh2015_register',
 						'name' => 'Will you be registering for the 2015 Digital Humanities conference?',
-						'location' => 'xprofile',
+						'location' => '',
 					);
 					break;
 
@@ -409,7 +409,7 @@ class LODLAM_User_Import {
 					$this->cols[ $ckey ] = array(
 						'slug' => 'dh2015_launch',
 						'name' => 'Would you like to come to the digital humanities conference launch drinks?',
-						'location' => 'xprofile',
+						'location' => '',
 					);
 					break;
 			}
