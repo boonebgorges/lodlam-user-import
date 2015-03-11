@@ -41,8 +41,8 @@ class LODLAM_User_Import {
 			foreach ( $this->cols as &$col ) {
 				$col = (array) $col;
 			}
+			delete_option( 'lui_results' );
 		}
-		delete_option( 'lui_results' );
 
 		?>
 		<div class="wrap">
@@ -134,6 +134,7 @@ class LODLAM_User_Import {
 		update_option( 'lui_last_csv', $upload_dir['path'] . '/lodlam-user-import.csv' );
 
 		wp_redirect( admin_url( 'admin.php?page=lodlam_user_import' ) );
+		die();
 	}
 
 	public static function allow_csv_upload( $types ) {
