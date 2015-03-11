@@ -197,9 +197,6 @@ class LODLAM_User_Import {
 
 				// Add to the main blog at lodlam.net (id 1)
 				add_user_to_blog( 1, $user->ID, 'author' );
-
-				// Add to the summit2013 blog (id 5)
-				add_user_to_blog( 5, $user->ID, 'author' );
 			}
 
 			$results[] = $result;
