@@ -1,30 +1,21 @@
 <?php
 
 class LODLAM_User_Import {
+	protected $cols = array();
+
 	public function __construct() {
 		$this->csv_path = __DIR__ . '/users.csv';
 		$this->page_url = admin_url( 'admin.php?page=lodlam_user_import' );
-
-		$this->cols = array(
-			1 => 'Full Name',
-			2 => 'E-mail Address',
-			3 => 'Website',
-			4 => 'Twitter handle',
-			5 => 'Affiliation',
-			6 => 'Short Bio',
-			7 => 'Interest in LODLAM',
-			10 => 'Username',
-			12 => 'Country',
-			13 => 'Sector',
-			14 => 'Linked Open Data Projects',
-		);
-
 		add_action( 'admin_menu', array( $this, 'add_admin_menu' ) );
 	}
 
 	public function add_admin_menu() {
+		if ( ! empty( $_FILES['lui_upload'] ) ) {
+			$this->process_upload();
+		}
+
 		if ( ! empty( $_POST['lodlam_process'] ) ) {
-			$this->start();
+//			$this->start();
 		}
 
 		add_menu_page(
@@ -44,9 +35,12 @@ class LODLAM_User_Import {
 		<div class="wrap">
 			<h2>LODLAM User Import</h2>
 
-			<form action="<?php echo $this->page_url ?>" method="post">
+			<form action="<?php echo $this->page_url ?>" method="post" enctype="multipart/form-data">
 				<?php if ( ! $results ) : ?>
-					<p>Click 'Import' to run the script.</p>
+					<label for="lui_upload"><?php _e( 'Select the user data file for upload.', 'lodlam-user-import' ) ?></label><br />
+					<input id="lui_upload" name="lui_upload" type="file" />
+					<p class="description"><?php _e( 'Note that this file must be in CSV format. Please convert before uploading.', 'lodlam-user-import' ) ?></p>
+					<?php wp_nonce_field( 'lui_upload', '_lui_upload_nonce' ); ?>
 
 					<p>The CSV file will be read and parsed, and you'll be given information about which accounts will be created, which have already been found in the system, and which records in the CSV are malformed. Then, click the Import button again to run the import.</p>
 				<?php else : ?>
@@ -81,10 +75,55 @@ class LODLAM_User_Import {
 		<?php
 	}
 
-	public function start() {
-		$handle = fopen( $this->csv_path, 'r' );
+	public function process_upload() {
+		if ( empty( $_POST['_lui_upload_nonce'] ) ) {
+			return;
+		}
 
-		$dry_run = empty( $_POST['run'] );
+		if ( ! wp_verify_nonce( $_POST['_lui_upload_nonce'], 'lui_upload' ) ) {
+			return;
+		}
+
+		if ( ! current_user_can( 'create_users' ) ) {
+			return;
+		}
+
+		if ( empty( $_FILES['lui_upload'] ) ) {
+			return;
+		}
+
+		if ( (int) $_FILES['lui_upload']['error'] > 0 ) {
+			return;
+		}
+
+		add_filter( 'upload_mimes', array( $this, 'allow_csv_upload' ) );
+
+		// temporarily save the file so we can process
+		$upload = wp_handle_upload( $_FILES['lui_upload'], array( 'test_form' => false ) );
+
+		remove_filter( 'upload_mimes', array( $this, 'allow_csv_upload' ) );
+
+		if ( empty( $upload['file'] ) ) {
+			return;
+		}
+
+		$this->start( $upload['file'] );
+	}
+
+	public static function allow_csv_upload( $types ) {
+		$types['csv'] = 'text/csv';
+		return $types;
+	}
+
+	public function start( $file = '' ) {
+		if ( ! $file ) {
+			$file = $this->csv_path;
+		}
+
+		$handle = fopen( $file, 'r' );
+
+//		$dry_run = empty( $_POST['run'] );
+		$dry_run = false;
 
 		$row = 0;
 		$results = array( 'is_dry_run' => $dry_run );
@@ -99,13 +138,19 @@ class LODLAM_User_Import {
 
 			// skip first row
 			if ( 1 === $row ) {
+				$this->determine_columns( $data );
 				continue;
 			}
 
-			$user_login = isset( $data[10] ) ? $data[10] : '';
-			$user_email = isset( $data[2] ) ? $data[2] : '';
-			$display_name = isset( $data[1] ) ? $data[1] : $user_login;
-			$user = $this->get_user( $user_email, $user_email );
+			$user_login = $this->get_col( 'user_login', $data );
+			$user_email = $this->get_col( 'user_email', $data );
+
+			$display_name = $this->get_col( 'display_name', $data );
+			if ( ! $display_name ) {
+				$display_name = $user_login;
+			}
+
+			$user = $this->get_user( $user_login, $user_email );
 
 			if ( ! $user ) {
 				$user = $this->create_user( $user_login, $user_email, $display_name, $dry_run );
@@ -120,7 +165,7 @@ class LODLAM_User_Import {
 
 			if ( ! $dry_run ) {
 				// Set a last activity for good measure
-				update_user_meta( $user->ID, 'last_activity', bp_core_current_time() );
+				bp_update_user_last_activity( $user->ID, bp_core_current_time() );
 
 				// Map BP profile data
 				$this->map_profile_fields( $user->ID, $data );
@@ -136,6 +181,196 @@ class LODLAM_User_Import {
 		}
 
 		update_option( 'lui_results', $results );
+	}
+
+	/**
+	 * Guess who!?!
+	 */
+	protected function determine_columns( $cols ) {
+		foreach ( $cols as $ckey => $cname ) {
+			$cname = strtolower( $cname );
+
+			switch ( $cname ) {
+				case 'timestamp' :
+					$this->cols[ $ckey ] = array(
+						'slug' => 'timestamp',
+						'name' => 'Timestamp',
+						'location' => '',
+					);
+					break;
+
+				case 'public information' :
+					$this->cols[ $ckey ] = array(
+						'slug' => 'is_public',
+						'name' => 'Public Information',
+						'location' => '',
+					);
+					break;
+
+				case 'full name' :
+					$this->cols[ $ckey ] = array(
+						'slug' => 'display_name',
+						'name' => 'Name',
+						'location' => '',
+					);
+					break;
+
+				case 'first name' :
+					$this->cols[ $ckey ] = array(
+						'slug' => 'first_name',
+						'name' => 'First Name',
+						'location' => 'usermeta',
+					);
+					break;
+
+				case 'username' :
+					$this->cols[ $ckey ] = array(
+						'slug' => 'user_login',
+						'name' => 'Username',
+						'location' => 'users',
+					);
+					break;
+
+				case 'e-mail address' :
+				case 'email address' :
+					$this->cols[ $ckey ] = array(
+						'slug' => 'user_email',
+						'name' => 'Email Address',
+						'location' => 'users',
+					);
+					break;
+
+				case 'website' :
+					$this->cols[ $ckey ] = array(
+						'slug' => 'user_url',
+						'name' => 'Website',
+						'location' => 'users',
+					);
+					break;
+
+				case 'twitter handle' :
+				case 'twitter' :
+					$this->cols[ $ckey ] = array(
+						'slug' => 'twitter',
+						'name' => 'Twitter',
+						'location' => 'xprofile',
+					);
+					break;
+
+				case 'affilliation' :
+				case 'affiliation' :
+					$this->cols[ $ckey ] = array(
+						'slug' => 'affiliation',
+						'name' => 'Affiliation',
+						'location' => 'xprofile',
+					);
+					break;
+
+				case 'sector' :
+					$this->cols[ $ckey ] = array(
+						'slug' => 'sector',
+						'name' => 'Sector',
+						'location' => 'xprofile',
+					);
+					break;
+
+				case 'country' :
+					$this->cols[ $ckey ] = array(
+						'slug' => 'country',
+						'name' => 'Country',
+						'location' => 'xprofile',
+					);
+					break;
+
+				case 'short bio' :
+					$this->cols[ $ckey ] = array(
+						'slug' => 'short_bio',
+						'name' => 'Short Bio',
+						'location' => 'xprofile',
+					);
+					break;
+
+				case 'linked open data projects' :
+					$this->cols[ $ckey ] = array(
+						'slug' => 'linked_open_data_projects',
+						'name' => 'Linked Open Data Projects',
+						'location' => 'xprofile',
+					);
+					break;
+
+				case 'interest in lodlam' :
+					$this->cols[ $ckey ] = array(
+						'slug' => 'interest_in_lodlam',
+						'name' => 'Interest in LODLAM',
+						'location' => 'xprofile',
+					);
+					break;
+
+				case 'are you interested in participating in a lodlam challenge?' :
+					$this->cols[ $ckey ] = array(
+						'slug' => 'lodlam_challege',
+						'name' => 'Are you interested in participating in a LODLAM challenge?',
+						'location' => 'xprofile',
+					);
+					break;
+
+				case 'what work you\'re doing would you like to submit to a lodlam challenge if we ran one for the 2015 summit?' :
+					$this->cols[ $ckey ] = array(
+						'slug' => 'work_to_submit',
+						'name' => 'What work you\'re doing would you like to submit to a LODLAM Challenge if we ran one for the 2015 Summit?',
+						'location' => 'xprofile',
+					);
+					break;
+
+				case 'acceptance and payment' :
+					$this->cols[ $ckey ] = array(
+						'slug' => 'acceptance_and_payment',
+						'name' => 'Acceptance and Payment',
+						'location' => 'xprofile',
+					);
+					break;
+
+				case 'additional notes' :
+					$this->cols[ $ckey ] = array(
+						'slug' => 'additional_notes',
+						'name' => 'Additional Notes',
+						'location' => 'xprofile',
+					);
+					break;
+
+				case 'did you know that the 2015 digital humanities conference is on around the same time and in the same place as the 2015 lodlam summit?' :
+					$this->cols[ $ckey ] = array(
+						'slug' => 'dh2015_did_you_know',
+						'name' => 'Did you know that the 2015 Digital Humanities conference is on around the same time and in the same place as the 2015 LODLAM Summit?',
+						'location' => 'xprofile',
+					);
+					break;
+
+				case 'will you be submitting a paper for the 2015 digital humanities conference?' :
+					$this->cols[ $ckey ] = array(
+						'slug' => 'dh2015_paper_submit',
+						'name' => 'Will you be submitting a paper for the 2015 Digital Humanities conference?',
+						'location' => 'xprofile',
+					);
+					break;
+
+				case 'will you be registering for the 2015 digital humanities conference?' :
+					$this->cols[ $ckey ] = array(
+						'slug' => 'dh2015_register',
+						'name' => 'Will you be registering for the 2015 Digital Humanities conference?',
+						'location' => 'xprofile',
+					);
+					break;
+
+				case 'would you like to come to the digital humanities conference launch drinks?' :
+					$this->cols[ $ckey ] = array(
+						'slug' => 'dh2015_launch',
+						'name' => 'Would you like to come to the digital humanities conference launch drinks?',
+						'location' => 'xprofile',
+					);
+					break;
+			}
+		}
 	}
 
 	protected function get_user( $user_login, $user_email ) {
@@ -191,16 +426,15 @@ Password: %4$s
 
 	protected function map_profile_fields( $user_id, $data ) {
 		// (1) WP + BP fields
-		//   - 1 => 'Full Name'
-		//   - 3 => 'Website'
 		wp_update_user( array(
 			'ID' => $user_id,
-			'display_name' => $data[1],
-			'user_url' => $data[3],
+			'display_name' => $this->get_col( 'display_name', $data ),
+			'first_name' => $this->get_col( 'first_name', $data ),
+			'user_url' => $this->get_col( 'user_url', $data ),
 		) );
 
-		$this->map_to_bp_field( $this->cols[1], $user_id, $data[1] );
-		$this->map_to_bp_field( $this->cols[3], $user_id, $data[3] );
+		$this->map_to_bp_field( 'display_name', $user_id, $data );
+		$this->map_to_bp_field( 'user_url', $user_id, $data );
 
 		// (2) BP fields
 		//   - 4 => 'Twitter handle',
@@ -210,43 +444,52 @@ Password: %4$s
 		//   - 12 => 'Country',
 		//   - 13 => 'Sector',
 
-		$this->map_to_bp_field( $this->cols[4], $user_id, $this->sanitize_twitter_handle( $data[4] ) );
-		$this->map_to_bp_field( $this->cols[5], $user_id, $data[5] );
-		$this->map_to_bp_field( $this->cols[6], $user_id, $data[6] );
-		$this->map_to_bp_field( $this->cols[7], $user_id, $data[7] );
-		$this->map_to_bp_field( $this->cols[12], $user_id, $data[12] );
-		$this->map_to_bp_field( $this->cols[13], $user_id, $data[13] );
-		$this->map_to_bp_field( $this->cols[14], $user_id, $data[14] );
+		$twitter_col = $this->get_col( 'twitter' );
+		$data[ $twitter_col ] = $this->sanitize_twitter_handle( $data[ $twitter_col ] );
+		foreach ( $data as $dkey => $d ) {
+			$dfield = $this->cols[ $dkey ];
+			if ( ! empty( $dfield['location'] ) && 'xprofile' === $dfield['location'] ) {
+				$this->map_to_bp_field( $dfield['slug'], $user_id, $data );
+			}
+		}
+
+		add_user_to_blog( get_current_blog_id(), $user_id, 'author' );
 	}
 
-	protected function map_to_bp_field( $field, $user_id, $value ) {
+	protected function map_to_bp_field( $field, $user_id, $data_array ) {
 		global $bp;
 
-		if ( 'Full Name' === $field ) {
+		$col_num = $this->get_col( $field );
+		$field_data = $this->cols[ $col_num ];
+
+		if ( 'display_name' === $field_data['slug'] ) {
 			$field_id = 1;
-		} else if ( ! $field_id = xprofile_get_field_id_from_name( $field ) ) {
+		} else if ( ! $field_id = xprofile_get_field_id_from_name( $field_data['name'] ) ) {
 			$type = 'textbox';
-			if ( in_array( $field, array(
-				'Short Bio',
-				'Interest in LODLAM',
-				'Linked Open Data Projects',
+			if ( in_array( $field_data['slug'], array(
+				'short_bio',
+				'interest_in_lodlam',
+				'linked_open_data_projects',
 			) ) ) {
 				$type = 'textarea';
 			}
 
 			// Field doesn't exist, so let's create it
 			$field_id = xprofile_insert_field( array(
-				'name' => $field,
+				'name' => $field_data['name'],
 				'type' => $type,
 				'field_group_id' => 1,
 			) );
 		}
 
-		$maybe_data = xprofile_get_field_data( (int) $field_id, $user_id );
-
-		if ( empty( $maybe_data ) ) {
-			xprofile_set_field_data( (int) $field_id, $user_id, $value );
+		// Overwrite existing data
+		if ( isset( $data_array[ $col_num ] ) ) {
+			var_Dump( $data_array[ $col_num ] );
+			$value = $data_array[ $col_num ];
+		} else {
+			$value = '';
 		}
+		xprofile_set_field_data( (int) $field_id, $user_id, $value );
 	}
 
 	/**
@@ -268,5 +511,31 @@ Password: %4$s
 		}
 
 		return $url;
+	}
+
+	protected function get_col( $col, $data = false ) {
+		// Find the column matching the slug.
+		$col_num = false;
+		foreach ( $this->cols as $ckey => $cdata ) {
+			if ( $col === $cdata['slug'] ) {
+				$col_num = $ckey;
+				break;
+			}
+		}
+
+		if ( ! $col_num ) {
+			return false;
+		}
+
+		if ( ! $data ) {
+			return $col_num;
+		}
+
+		// If the data array is passed, return the proper data from it.
+		if ( isset( $data[ $col_num ] ) ) {
+			return $data[ $col_num ];
+		} else {
+			return '';
+		}
 	}
 }
