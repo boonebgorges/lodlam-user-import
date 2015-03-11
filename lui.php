@@ -216,6 +216,7 @@ Password: %4$s
 		$this->map_to_bp_field( $this->cols[7], $user_id, $data[7] );
 		$this->map_to_bp_field( $this->cols[12], $user_id, $data[12] );
 		$this->map_to_bp_field( $this->cols[13], $user_id, $data[13] );
+		$this->map_to_bp_field( $this->cols[14], $user_id, $data[14] );
 	}
 
 	protected function map_to_bp_field( $field, $user_id, $value ) {
@@ -241,7 +242,11 @@ Password: %4$s
 			) );
 		}
 
-		xprofile_set_field_data( (int) $field_id, $user_id, $value );
+		$maybe_data = xprofile_get_field_data( (int) $field_id, $user_id );
+
+		if ( empty( $maybe_data ) ) {
+			xprofile_set_field_data( (int) $field_id, $user_id, $value );
+		}
 	}
 
 	/**
