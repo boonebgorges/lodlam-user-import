@@ -346,7 +346,7 @@ class LODLAM_User_Import {
 					$this->cols[ $ckey ] = array(
 						'slug' => 'interest_in_lodlam',
 						'name' => 'Interest in LODLAM',
-						'location' => 'xprofile',
+						'location' => '',
 					);
 					break;
 
